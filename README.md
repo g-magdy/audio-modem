@@ -1,2 +1,2 @@
 # audio-modem
-A simple audio modulation - demodulation task
+Modulate Speech signals using single sideband (SSB) modulation in a frequency-division multiplexing (FDM) system.
