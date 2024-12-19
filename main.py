@@ -1,83 +1,50 @@
-import datetime
-import numpy as np
-import sounddevice as sd
-import matplotlib.pyplot as plt
-import scipy.signal as signal
-import scipy.fftpack as fftpack
-import scipy.io.wavfile as wav
+from plotting import plot_time_domain, plot_magnitude_spectrum
+from filtering import low_pass_filter, band_pass_filter
+from processing import read_audio_file, modulate, demodulate, save_signal_to_file
+from constants import F_INPUT_MAX, CARRIER_FREQ_1
 
-
-RECORDING_DIR = "./recordings"
-IMAGES_DIR = "./images"
-
-def record_audio_to_file(duration, fs):
+def main():
+    fs, audio = read_audio_file("./recordings/input/input1.wav")
     
-    timestamp = datetime.datetime.now().strftime("%Y-%m-%d_%H:%M:%S")
-    filepath = f"{RECORDING_DIR}/input_{timestamp}.wav"
+    plot_time_domain(audio, fs, chart_title="Initial Input Audio Signal in Time Domain", save=True)
+    plot_magnitude_spectrum(audio, fs, chart_title="Initial Input Audio Spectrum", save=True)
     
-    print("Recording Now...")
-    audio = sd.rec(int(duration * fs), samplerate=fs, channels=1, dtype='int16')
-    sd.wait()
-    print("Done recording.")
-    wav.write(filepath, fs, audio)
-    print("Audio saved to", filepath)
-    return audio
-
-
-def plot_audio(audio, fs):
-    time = np.arange(0, len(audio)/fs, 1/fs)
-    plt.plot(time, audio)
-    plt.xlabel("Time (s)")
-    plt.ylabel("Amplitude")
-    plt.title("Audio")
-    plt.show()
-
-def plot_audio_spectrum(audio, fs, show_negative=True):
-    # Flatten the audio if it's 2D
-    if audio.ndim > 1:
-        audio = audio.flatten()
+    # to limit the max frequency of the audio signal
+    # human voice is usually below 4kHz
+    filtered_audio = low_pass_filter(audio, F_INPUT_MAX, fs)
     
-    N = len(audio)
-    if show_negative:
-        freq = np.fft.fftfreq(N, 1/fs)  # Both positive and negative frequencies
-        audio_fft = np.fft.fft(audio)
-    else:
-        freq = np.fft.rfftfreq(N, 1/fs)  # Only positive frequencies
-        audio_fft = np.fft.rfft(audio)  # real signals
+    plot_magnitude_spectrum(filtered_audio, fs, chart_title=f"Magnitude Spectrum with max f = {F_INPUT_MAX} Hz", save=True)
     
-    # Normalize magnitude 
-    # regardless of the magnitude of the signal
-    magnitude = np.abs(audio_fft) / N  
-
-    plt.plot(freq, magnitude)
-    plt.xlabel("Frequency (Hz)")
-    plt.ylabel("Magnitude")
-    plt.title("Audio Spectrum")
-    plt.grid()
-    plt.show()
+    modulated_signal = modulate(filtered_audio, CARRIER_FREQ_1, fs)
     
-    # save the plot
-    plt.savefig(f"{IMAGES_DIR}/audio_spectrum.png")
-
-
-if __name__ == "__main__":
-    duration = 5
-    fs = 44100
-
-    audio = record_audio_to_file(duration, fs)
-    plot_audio(audio, fs)
-    plot_audio_spectrum(audio, fs)
+    plot_magnitude_spectrum(modulated_signal, fs, chart_title="Modulated Signal Magnitude Spectrum", save=True)
     
-    # get audio spectrum
-    # FFT: Converts the audio signal from the time domain to the frequency domain.
-    audio_spectrum = np.fft.fft(audio)
+    # now let's get one sideband of the modulated signal
+    # this is a crucial step in demodulation to achieve a single sidedband signal
+    # make it closer to ideal filter
+    filtered_modulated_signal = band_pass_filter(modulated_signal,CARRIER_FREQ_1,CARRIER_FREQ_1 + F_INPUT_MAX, fs, order=25)
     
-    # FFT Shift: Centers the zero-frequency component for better visualization and analysis.
-    audio_spectrum = np.fft.fftshift(audio_spectrum)
+    plot_magnitude_spectrum(filtered_modulated_signal, fs, chart_title="USB of Modulated Signal Spectrum", save=True)
     
-    # Magnitude: Extracts the amplitude of the frequency components, discarding phase information.
-    audio_spectrum = np.abs(audio_spectrum)
+    # Now the signal is ready to be sent to the channel
+    # taking only BW = F_INPUT_MAX
     
+    # now demodulate the signal
+    demodulated_signal = demodulate(filtered_modulated_signal, CARRIER_FREQ_1, fs)
+    
+    plot_magnitude_spectrum(demodulated_signal, fs, chart_title="Demodulated Signal Spectrum before LPF", save=True)
+    
+    low_pass_filtered_signal = low_pass_filter(demodulated_signal, F_INPUT_MAX, fs)
+    
+    # save the demodulated signal
+    save_signal_to_file(low_pass_filtered_signal, fs, "./recordings/output/output1.wav")
+    
+    plot_magnitude_spectrum(low_pass_filtered_signal, fs, chart_title="Demodulated Signal Spectrum after LPF", save=True)
+    plot_time_domain(low_pass_filtered_signal, fs, chart_title="Reconstucted Signal in Time Domain", save=True)
     
     
     print("Done.")
+
+
+if __name__ == "__main__":
+    main()
