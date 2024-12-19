@@ -155,3 +155,43 @@ function [modulated_signal] = custom_modulation(message_signal, carrier_freq, fs
     modulated_signal = message_signal .* carrier;
 
 end
+
+
+function [modulated_signal] = custom_modulation(message_signal, carrier_freq, fs)
+    % Check if inputs are valid
+    if isempty(message_signal)
+        error('Message signal is empty.');
+    end
+    if carrier_freq <= 0
+        error('Carrier frequency must be positive.');
+    end
+    if fs <= 0
+        error('Sampling frequency must be positive.');
+    end
+
+    % Initialize modulated signal
+    modulated_signal = zeros(size(message_signal));
+    
+    % Define chunk size
+    chunk_size = 1e6;  % Adjust this value based on available memory
+    
+    % Process signal in chunks
+    num_chunks = ceil(length(message_signal) / chunk_size);
+    for k = 1:num_chunks
+        % Define chunk indices
+        start_idx = (k-1) * chunk_size + 1;
+        end_idx = min(k * chunk_size, length(message_signal));
+        
+        % Extract chunk
+        chunk = message_signal(start_idx:end_idx);
+        
+        % Time vector for the chunk
+        t = (start_idx-1:end_idx-1) / fs;
+        
+        % Carrier signal for the chunk
+        carrier = cos(2 * pi * carrier_freq * t);
+        
+        % Modulate the chunk
+        modulated_signal(start_idx:end_idx) = chunk .* carrier;
+    end
+end
