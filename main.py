@@ -1,50 +1,62 @@
 from plotting import plot_time_domain, plot_magnitude_spectrum
-from filtering import low_pass_filter, band_pass_filter
-from processing import read_audio_file, modulate, demodulate, save_signal_to_file
-from constants import F_INPUT_MAX, CARRIER_FREQ_1
+from filtering import apply_lpf, apply_bandpass
+from processing import read_audio_file, ssb_modulate, combine_signals, ssb_demodulate, save_signal_to_file
+from constants import SAMPLE_RATE, F_INPUT_MAX, \
+    CARRIER_FREQ_1,CARRIER_FREQ_2, CARRIER_FREQ_3
 
-def main():
-    fs, audio = read_audio_file("./recordings/input/input1.wav")
+def process_audio(filename, carrier_freq, show_plots=False, save_plots=False):
+    audio, fs = read_audio_file(filename)
+    filtered = apply_lpf(audio, SAMPLE_RATE, F_INPUT_MAX)
+    modulated = ssb_modulate(filtered, carrier_freq, SAMPLE_RATE)
     
-    plot_time_domain(audio, fs, chart_title="Initial Input Audio Signal in Time Domain", save=True)
-    plot_magnitude_spectrum(audio, fs, chart_title="Initial Input Audio Spectrum", save=True)
-    
-    # to limit the max frequency of the audio signal
-    # human voice is usually below 4kHz
-    filtered_audio = low_pass_filter(audio, F_INPUT_MAX, fs)
-    
-    plot_magnitude_spectrum(filtered_audio, fs, chart_title=f"Magnitude Spectrum with max f = {F_INPUT_MAX} Hz", save=True)
-    
-    modulated_signal = modulate(filtered_audio, CARRIER_FREQ_1, fs)
-    
-    plot_magnitude_spectrum(modulated_signal, fs, chart_title="Modulated Signal Magnitude Spectrum", save=True)
-    
-    # now let's get one sideband of the modulated signal
-    # this is a crucial step in demodulation to achieve a single sidedband signal
-    # make it closer to ideal filter
-    filtered_modulated_signal = band_pass_filter(modulated_signal,CARRIER_FREQ_1,CARRIER_FREQ_1 + F_INPUT_MAX, fs, order=25)
-    
-    plot_magnitude_spectrum(filtered_modulated_signal, fs, chart_title="USB of Modulated Signal Spectrum", save=True)
-    
-    # Now the signal is ready to be sent to the channel
-    # taking only BW = F_INPUT_MAX
-    
-    # now demodulate the signal
-    demodulated_signal = demodulate(filtered_modulated_signal, CARRIER_FREQ_1, fs)
-    
-    plot_magnitude_spectrum(demodulated_signal, fs, chart_title="Demodulated Signal Spectrum before LPF", save=True)
-    
-    low_pass_filtered_signal = low_pass_filter(demodulated_signal, F_INPUT_MAX, fs)
-    
-    # save the demodulated signal
-    save_signal_to_file(low_pass_filtered_signal, fs, "./recordings/output/output1.wav")
-    
-    plot_magnitude_spectrum(low_pass_filtered_signal, fs, chart_title="Demodulated Signal Spectrum after LPF", save=True)
-    plot_time_domain(low_pass_filtered_signal, fs, chart_title="Reconstucted Signal in Time Domain", save=True)
-    
-    
-    print("Done.")
+    if show_plots:
+        filename = filename.split('.')[0]
+        plot_time_domain(audio, fs, chart_title=f"{filename} in Time Domain", save=save_plots)
+        plot_magnitude_spectrum(audio, fs, chart_title=f"{filename} Magnitude Spectrum", save=save_plots)
+        plot_magnitude_spectrum(filtered, fs, f'Filtered {filename} Magnitude Spectrum', save=save_plots)
+        plot_magnitude_spectrum(modulated, fs, f'Modulated {filename} Magnitude Spectrum', save=save_plots)
+        
+    return modulated
 
+def reconstruct_signal(modulated_signal, carrier_freq, fs, signal_name="",show_plots=False, save_plots=False):
+    # Apply bandpass filter to isolate the desired signal
+    lowcut = carrier_freq - F_INPUT_MAX / 2
+    highcut = carrier_freq + F_INPUT_MAX / 2
+    bandpassed_signal = apply_bandpass(modulated_signal, fs, lowcut, highcut)
+    demodulated = ssb_demodulate(bandpassed_signal, carrier_freq, fs)
+    # Apply low-pass filter after demodulation
+    recovered_signal = apply_lpf(demodulated, fs, F_INPUT_MAX)
+    
+    if show_plots:
+        signal_name = signal_name.split('.')[0]
+        plot_magnitude_spectrum(bandpassed_signal, fs, f'{signal_name.split('.')[0]} Bandpassed Signal at {carrier_freq} Hz', save=save_plots)
+        plot_magnitude_spectrum(demodulated, fs, f'{signal_name} Demodulated Signal from {carrier_freq} Hz', save=save_plots)
+        plot_magnitude_spectrum(recovered_signal, fs, f' {signal_name} Recovered Signal from {carrier_freq} Hz', save=save_plots)
+    
+    return recovered_signal
+
+def  main():
+    # Load the recorded audio signals
+    input_files = ['input1.wav', 'input2.wav', 'input3.wav']
+    carrier_frequencies = [CARRIER_FREQ_1, CARRIER_FREQ_2, CARRIER_FREQ_3] 
+    modulated_signals = []
+    
+    for i, (file, carrier) in enumerate(zip(input_files, carrier_frequencies)):
+        modulated_signals.append(process_audio(file, carrier, show_plots=True, save_plots=(i==0)))
+        # i will only save the first plot (i==0)
+    
+    # Combine modulated signals for FDM
+    fdm_signal = combine_signals(modulated_signals)
+    plot_magnitude_spectrum(fdm_signal, SAMPLE_RATE, 'FDM Signal', save=True)
+
+    # Perform SSB Demodulation
+    output_files = ['output1.wav', 'output2.wav', 'output3.wav']
+    demodulated_signals = []
+    
+    for i, (file, carrier) in enumerate(zip(output_files, carrier_frequencies)):
+        demodulated_signals.append(reconstruct_signal(fdm_signal, carrier, SAMPLE_RATE, input_files[i], show_plots=True, save_plots=(i==0)))
+        # i will only save the first plot (i==0)
+        save_signal_to_file(demodulated_signals[i], SAMPLE_RATE, file)
 
 if __name__ == "__main__":
     main()

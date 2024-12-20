@@ -11,10 +11,11 @@ def plot_time_domain(audio, fs, chart_title="Audio Signal in Time Domain", save=
     plt.title(chart_title)
     if save:
         plt.savefig(f"{IMAGES_DIR}/{chart_title}.png", dpi=100)
+        print(f"Image saved to {IMAGES_DIR}/{chart_title}.png")
     plt.show()
     
 
-def plot_magnitude_spectrum(audio, fs, show_negative=True, chart_title="Audio Spectrum in Frequency Domain", save=False):
+def plot_magnitude_spectrum(audio, fs, chart_title="Audio Spectrum in Frequency Domain", save=False, show_negative=True, ):
     # Flatten the audio if it's 2D
     if audio.ndim > 1:
         audio = audio.flatten()
@@ -39,5 +40,6 @@ def plot_magnitude_spectrum(audio, fs, show_negative=True, chart_title="Audio Sp
     plt.grid()
     if save:
         plt.savefig(f"{IMAGES_DIR}/{chart_title}.png", dpi=100)
+        print(f"Image saved to {IMAGES_DIR}/{chart_title}.png")
     plt.show()
     

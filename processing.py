@@ -3,14 +3,19 @@ import time
 import numpy as np
 import sounddevice as sd
 import scipy.io.wavfile as wav
-from constants import INTMAX_16_BIT_SIGNED, RECORDING_DIR
+import soundfile as sf
+from constants import INTMAX_16_BIT_SIGNED, RECORDING_DIR, \
+    INPUT_RECORDING_DIR, OUTPUT_RECORDING_DIR
+from filtering import custom_hilbert
 
-def read_audio_file(filepath):
-    fs, audio = wav.read(filepath)
-    return fs, audio
+def read_audio_file(filename):
+    filepath = f"{INPUT_RECORDING_DIR}/{filename}"
+    audio, fs = sf.read(filepath)
+    return audio, fs
 
 
-def save_signal_to_file(signal, fs, filepath):
+def save_signal_to_file(signal, fs, filename):
+    filepath = f"{OUTPUT_RECORDING_DIR}/{filename}"
     # Normalize the signal to the range of int16
     # this solves the problem of having a really loud volume
     signal = np.int16(signal / np.max(np.abs(signal)) * INTMAX_16_BIT_SIGNED)
@@ -36,23 +41,28 @@ def record_audio_to_file(duration, fs):
     return audio
 
 
-def modulate(message_signal, carrier_freq, fs):
 
-    # Time vector based on sampling frequency
-    t = np.arange(len(message_signal)) / fs
-    
-    # Carrier signal with frequency w_c
+def ssb_modulate(signal, carrier_freq, sample_rate):
+
+    t = np.arange(len(signal)) / sample_rate
     carrier = np.cos(2 * np.pi * carrier_freq * t)
     
-    # Modulated signal = m(t) * cos(w_c * t)
-    modulated_signal = message_signal * carrier
+    # Compute the analytic signal
+    analytic_signal = custom_hilbert(signal)
     
-    return modulated_signal
+    # SSB modulation (upper sideband)
+    ssb_signal = np.real(analytic_signal * np.exp(1j * 2 * np.pi * carrier_freq * t))
+    
+    return ssb_signal
 
+def combine_signals(signals):
+    return np.sum(signals, axis=0)
 
-def demodulate(modulated_signal, carrier_freq, fs):
-    # Demodulation is done by multiplying the modulated signal by the carrier signal
-    # and then applying a low-pass filter to remove the high-frequency components
-    # but in this case, we will just multiply by the carrier signal
-    # and leave the low-pass filter out of this function to be more flexible
-    return modulate(modulated_signal, carrier_freq, fs)
+def ssb_demodulate(ssb_signal, carrier_freq, sample_rate):
+    t = np.arange(len(ssb_signal)) / sample_rate
+    carrier = np.cos(2 * np.pi * carrier_freq * t)
+    
+    # Multiply by the carrier signal to shift the spectrum back to baseband
+    demodulated = ssb_signal * carrier
+    
+    return demodulated
